@@ -23,3 +23,5 @@ And there u go bot is working.
 
 
 # This code is provided for educational purposes only, DO NOT do anything illegal with it.
+
+<a href="https://replit.com/@fcodeforcode/discord-email-and-webhook-spam-bot"><img src="https://replit.com/badge?text=Run on Replit" alt="Run on Replit"></a>
