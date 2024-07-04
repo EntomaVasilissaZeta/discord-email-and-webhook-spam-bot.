@@ -20,3 +20,6 @@ repeat again if u need to. if u do put it in "SMTP_EMAIL2" and "SMTP_PASSWORD2".
 
 
 And there u go bot is working.
+
+
+# This code is provided for educational purposes only, DO NOT do anything illegal with it.
