@@ -1,0 +1,24 @@
+{
+  "emailAccounts": [
+    {
+      "address": "example1@gmail.com",
+      "password": "password1",
+      "attempts": 0,
+      "maxAttempts": 100
+    },
+    {
+      "address": "example2@gmail.com",
+      "password": "password2",
+      "attempts": 0,
+      "maxAttempts": 100
+    }
+  ],
+  "discordToken": "your_discord_bot_token",
+  "roleID1": "role_id_for_role1",
+  "roleID2": "role_id_for_role2",
+  "channelID": "your_spam_channel_id",
+  "logChannelID": "your_log_channel_id",
+  "allowedUsername": "entoma_.",
+  "entomaID": "1177089844372066364",
+  "notificationChannelID": null
+}
