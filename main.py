@@ -1,54 +1,43 @@
-# CREATED BY TeamMonster, entoma, And Xoid.
 import os
+import json
 import discord
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
-from flask import Flask, request, jsonify, render_template
-from werkzeug.utils import secure_filename
 import requests
 
-load_dotenv()
-EMAIL_ACCOUNTS = [
-    {
-        'address': os.getenv('SMTP_EMAIL1'),
-        'password': os.getenv('SMTP_PASSWORD1'),
-        'attempts': 0,
-        'max_attempts': 30
-    },
-    {
-        'address': os.getenv('SMTP_EMAIL2'),
-        'password': os.getenv('SMTP_PASSWORD2'),
-        'attempts': 0,
-        'max_attempts': 30
-    },
-]
+config_file = 'config.json'
+with open(config_file, 'r') as f:
+    config = json.load(f)
 
-TOKEN = os.getenv('DISCORD_TOKEN')
-ROLE_ID1 = int(os.getenv('ROLE_ID1')) # Regular user role
-ROLE_ID2 = int(os.getenv('ROLE_ID2'))  # Paid user role
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
-LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID'))
-EMBED_ROLE_ID = int(os.getenv('EMBED_ROLE_ID'))  # Role that can use embeds. (coming soon.)
+EMAIL_ACCOUNTS = config['emailAccounts']
+TOKEN = config['discordToken']
+ROLE_ID1 = config['roleID1']
+ROLE_ID2 = config['roleID2']
+CHANNEL_ID = config['channelID']
+LOG_CHANNEL_ID = config['logChannelID']
+ALLOWED_USERNAME = config['allowedUsername']
+ENTOMA_ID = config['entomaID']  # Entoma's Discord user ID
+
+NOTIFICATION_CHANNEL_NAME = "Spammer Updates"
 
 intents = discord.Intents.default()
 intents.message_content = True
 
-
 class MyBot(commands.Bot):
-
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
-        self.accepted_tos = set()  # Store users who have accepted the TOS
+        self.accepted_tos = set()
+        self.notification_channel_id = config.get('notificationChannelID')
 
-    async def setup_hook(self):
-        guild = discord.Object(id=1166815592028848289)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
+    async def on_ready(self):
+        print(f'Logged in as {self.user}')
+        await self.change_presence(activity=discord.Game(name="Made By TeamMonster, Entoma & Xoid | https://discord.gg/YbjCe7fVdJ"))
 
-    # This function will be called when a user runs a command
+        # Syncing commands with Discord
+        await self.tree.sync()
+
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):
             return
@@ -56,28 +45,20 @@ class MyBot(commands.Bot):
         if member.id not in self.accepted_tos:
             await ctx.reply("Error: 948. Read ToS. `/tos`")
             return
-        # ... (Your existing command error handling) ...
-
-
-# Function to send the TOS message with buttons
 
     async def send_tos(self, member):
         embed = discord.Embed(
             title="Terms of Service",
-            description=
-            "Please accept our terms of service to continue using the bot.")
+            description="Please accept our terms of service to continue using the bot."
+        )
         embed.add_field(
             name="TOS Link:",
-            value=
-            "[Terms of Service](https://free-4665252.webadorsite.com/terms-of-service)"
+            value="[Terms of Service](https://free-4665252.webadorsite.com/terms-of-service)"
         )
         view = discord.ui.View()
-        accept_button = discord.ui.Button(label="Accept",
-                                          style=discord.ButtonStyle.green)
-        decline_button = discord.ui.Button(label="Decline",
-                                           style=discord.ButtonStyle.red)
+        accept_button = discord.ui.Button(label="Accept", style=discord.ButtonStyle.green)
+        decline_button = discord.ui.Button(label="Decline", style=discord.ButtonStyle.red)
 
-        # Attach button actions
         async def accept_callback(interaction):
             self.accepted_tos.add(member.id)
             await interaction.response.send_message(
@@ -98,32 +79,32 @@ class MyBot(commands.Bot):
 
         await member.send(embed=embed, view=view)
 
+    async def ensure_notification_channel(self, guild_id):
+        guild = self.get_guild(guild_id)
+        if guild:
+            existing_channel = discord.utils.get(guild.channels, name=NOTIFICATION_CHANNEL_NAME)
+            if existing_channel:
+                self.notification_channel_id = existing_channel.id
+                config['notificationChannelID'] = existing_channel.id
+                with open(config_file, 'w') as f:
+                    json.dump(config, f, indent=4)
+            else:
+                self.notification_channel_id = None
+                config['notificationChannelID'] = None
+                with open(config_file, 'w') as f:
+                    json.dump(config, f, indent=4)
+
 bot = MyBot()
 
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    await bot.change_presence(activity=discord.Game(name="Watching: Made By TeamMonster & Xoid. | https://discord.gg/YbjCe7fVdJ"))
-
-@bot.tree.command(name="tos",
-                  description="View and accept the Terms of Service",
-                  guild=discord.Object(id=1166815592028848289))
+@bot.tree.command(name="tos", description="View and accept the Terms of Service")
 async def tos(interaction: discord.Interaction):
     member = interaction.user
     await bot.send_tos(member)
     await interaction.response.send_message(
-        "Please check your DMs for the Terms of Service.")
+        "Please check your DMs for the Terms of Service.", ephemeral=True)
 
-
-@bot.tree.command(name="webhook",
-                  description="Spam a webhook with a message and image",
-                  guild=discord.Object(id=1166815592028848289))
-async def webhook(interaction: discord.Interaction,
-                  webhook_url: str,
-                  msg: str,
-                  amount: int,
-                  image_url: str = None):
+@bot.tree.command(name="webhook", description="Spam a webhook with a message and image")
+async def webhook(interaction: discord.Interaction, webhook_url: str, msg: str, amount: int, image_url: str = None):
     if interaction.channel.id != CHANNEL_ID:
         await interaction.response.send_message(
             "This command can only be used in the Webhook Spam channel.",
@@ -140,28 +121,12 @@ async def webhook(interaction: discord.Interaction,
         "Spamming the webhook... Please wait!", ephemeral=True)
 
     for _ in range(amount):
-        if EMBED_ROLE_ID in [role.id for role in member.roles]:
-            # User with EMBED_ROLE_ID can use embeds
-            embed = discord.Embed(title="Webhook Spam",
-                                  description=msg,
-                                  color=discord.Color.blue())
-            if image_url:
-                embed.set_image(url=image_url)
-            embed.set_footer(text="Powered by TeamMonster & Xoid")
-            data = {"embeds": [embed.to_dict()]}
-        else:
-            # Regular user - plain text
-            data = {"content": f"{msg}"}
-            if image_url:
-                data["content"] += f"\n{image_url}"
-
         try:
-            response = requests.post(webhook_url, json=data)
+            response = requests.post(webhook_url, json={"content": msg})
             if response.status_code == 204:
                 print(f"Webhook message sent successfully to {webhook_url}")
             else:
-                print(
-                    f"Webhook message failed to send: {response.status_code}")
+                print(f"Webhook message failed to send: {response.status_code}")
         except Exception as e:
             print(f"Error sending webhook message: {e}")
 
@@ -179,12 +144,8 @@ async def webhook(interaction: discord.Interaction,
     log_embed.set_footer(text=f"Spammed by: {interaction.user}")
     await log_channel.send(embed=log_embed)
 
-
-@bot.tree.command(name="email",
-                  description="Spam an email address with a custom message",
-                  guild=discord.Object(id=1166815592028848289))
-async def email(interaction: discord.Interaction, to_address: str,
-                message: str):
+@bot.tree.command(name="email", description="Spam an email address with a custom message")
+async def email(interaction: discord.Interaction, to_address: str, message: str):
     if interaction.channel.id != CHANNEL_ID:
         await interaction.response.send_message(
             "This command can only be used in the Email Spam channel.",
@@ -215,110 +176,72 @@ async def email(interaction: discord.Interaction, to_address: str,
 
     current_account = None
     for account in EMAIL_ACCOUNTS:
-        if account['attempts'] < account['max_attempts']:
+        if account['attempts'] < account['maxAttempts']:
             current_account = account
             break
 
     if current_account is None:
-        await interaction.followup.send(
-            "All email accounts have reached their maximum attempts. Cannot send emails.",
-            ephemeral=True)
+        await interaction.followup.send("All email accounts have reached their maximum attempts.",
+                                        ephemeral=True)
         return
 
-    from_address = current_account['address']
-    full_message = f"{message}\n\nPowered By TeamMonster & Xoid | https://discord.gg/yNhgks4j"
+    for _ in range(email_count):
+        try:
+            msg = MIMEText(message)
+            msg['Subject'] = 'Spam Email'
+            msg['From'] = current_account['address']
+            msg['To'] = to_address
 
-    try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtpserver:
-            smtpserver.ehlo()
-            smtpserver.starttls()
-            smtpserver.ehlo()
-            smtpserver.login(from_address, current_account['password'])
-            for i in range(email_count):
-                smtpserver.sendmail(from_address, to_address, full_message)
-                print(
-                    f'Email {i + 1} sent to {to_address} from {from_address}')
-                current_account['attempts'] += 1
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(current_account['address'], current_account['password'])
+                server.sendmail(current_account['address'], to_address, msg.as_string())
 
-        embed = discord.Embed(
-            title="Email Sent",
-            description=
-            f"{email_count} emails have been successfully sent to {to_address}.",
-            color=discord.Color.green())
-        embed.set_footer(text="Powered By TeamMonster & Xoid")
-        success_message = await interaction.followup.send(embed=embed)
-        await success_message.delete(delay=10)
+            current_account['attempts'] += 1
 
-        log_channel = bot.get_channel(LOG_CHANNEL_ID)
-        log_embed = discord.Embed(title="Email Spam Log",
-                                  color=discord.Color.blue())
-        log_embed.add_field(name="Recipient", value=to_address, inline=False)
-        log_embed.add_field(name="Message", value=message, inline=False)
-        log_embed.add_field(name="User",
-                            value=interaction.user.name,
-                            inline=False)
-        log_embed.set_footer(text=f"Sent from: {from_address}")
-        await log_channel.send(embed=log_embed)
+        except Exception as e:
+            await interaction.followup.send(f"Error sending email: {e}", ephemeral=True)
+            return
 
-    except Exception as e:
-        embed = discord.Embed(title="Email Sending Failed",
-                              description=f"Failed to send email: {e}",
-                              color=discord.Color.red())
-        embed.set_footer(text="Powered By TeamMonster & Xoid")
-        await interaction.followup.send(embed=embed)
+    await interaction.followup.send(f"Email spam completed. {email_count} emails sent to {to_address}.",
+                                    ephemeral=True)
 
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    log_embed = discord.Embed(title="Email Spam Log",
+                              color=discord.Color.blue())
+    log_embed.add_field(name="To Address", value=to_address, inline=False)
+    log_embed.add_field(name="Message", value=message, inline=False)
+    log_embed.add_field(name="User", value=interaction.user.name, inline=False)
+    log_embed.set_footer(text=f"Spammed by: {interaction.user}")
+    await log_channel.send(embed=log_embed)
+
+@bot.tree.command(name="notify", description="Send a notification message to the configured channel")
+async def notify(interaction: discord.Interaction, *, msg: str):
+    if interaction.user.name != ALLOWED_USERNAME:
+        await interaction.response.send_message(
+            "You are not allowed to use this command.", ephemeral=True)
+        return
+
+    notification_channel = bot.get_channel(bot.notification_channel_id)
+    if notification_channel:
+        await notification_channel.send(msg)
+        await interaction.response.send_message(
+            f"Notification sent to {notification_channel.mention}.", ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            "Notification channel not found. Please set it up using /set-notify-channel.", ephemeral=True)
+
+@bot.tree.command(name="set-notify-channel", description="Set the notification channel for the /notify command")
+async def set_notify_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    if interaction.user.id != int(ENTOMA_ID):
+        await interaction.response.send_message(
+            "Only Entoma_ can use this command.", ephemeral=True)
+        return
+
+    bot.notification_channel_id = channel.id
+    config['notificationChannelID'] = channel.id
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=4)
+    await interaction.response.send_message(
+        f"Notification channel set to {channel.mention}.", ephemeral=True)
 
 bot.run(TOKEN)
-
-app = Flask(__name__)
-
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-@app.route('/send_email', methods=['POST'])
-def send_email():
-    data = request.json
-    to_address = data.get('to_address')
-    message = data.get('message')
-
-    current_account = None
-    for account in EMAIL_ACCOUNTS:
-        if account['attempts'] < account['max_attempts']:
-            current_account = account
-            break
-
-    if current_account is None:
-        return jsonify({
-            "status":
-            "error",
-            "message":
-            "All email accounts have reached their maximum attempts."
-        }), 500
-
-    from_address = current_account['address']
-    full_message = f"{message}\n\nPowered By TeamMonster & Xoid | https://discord.gg/yNhgks4j"
-
-    try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtpserver:
-            smtpserver.ehlo()
-            smtpserver.starttls()
-            smtpserver.ehlo()
-            smtpserver.login(from_address, current_account['password'])
-            smtpserver.sendmail(from_address, to_address, full_message)
-            current_account['attempts'] += 1
-            print(f'Email sent to {to_address} from {from_address}')
-        return jsonify({
-            "status": "success",
-            "message": "Email sent successfully."
-        }), 200  # Success status code
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500  # Error status code
-
-# Add the status 
-app.route('/status', methods=['GET'])
-def status():
-  return "Watching: Made By TeamMonster & Xoid. | https://discord.gg/YbjCe7fVdJ"
